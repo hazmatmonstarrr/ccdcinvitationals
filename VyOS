@@ -22,8 +22,8 @@ configure
 # --- Block 1: System Hardening ---
 echo "Block 1: Hardening System..."
 # CHANGE THESE PASSWORDS to something unique and strong!
-set system login user vyos authentication plaintext-password 'ChangeMeASAP123!'
-set system login user root authentication plaintext-password 'ChangeMeEvenHarder456!'
+set system login user T3am12 authentication plaintext-password 'ChangeMeASAP123!'
+set system login user T3am12 authentication plaintext-password 'ChangeMeEvenHarder456!'
 
 # Secure SSH: Change port to 2222, disable root, disable password auth (if you use keys)
 set service ssh port '2222'
