@@ -1,4 +1,4 @@
-# invitationals-networking-scripts
+CCDC Invitationals 2025
 
 This repo contains a bunch of scripts I made to harden the VyOS router which is in the CCDC Invitationals topology along with a Palo Alto firewall and a Cisco firewall. 
 
