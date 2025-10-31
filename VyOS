@@ -1,0 +1,267 @@
+#!/bin/vbash
+# CCDC VyOS Hardening & Configuration Script
+# Team 12
+#
+# HOW TO USE:
+# 1. Upload this to your GitHub (e.g., as a "Gist").
+# 2. Get the "Raw" URL.
+# 3. On your VyOS router (as user 'vyos'):
+#    curl -L "[URL_TO_YOUR_RAW_SCRIPT]" -o /config/vyos-init.sh
+# 4. Make it executable:
+#    chmod +x /config/vyos-init.sh
+# 5. Run the script:
+#    sudo /config/vyos-init.sh
+#
+# This script applies the configuration immediately by running 'commit' and 'save'.
+
+source /opt/vyatta/etc/functions/script-template
+
+echo "Starting Team 12 VyOS Configuration..."
+configure
+
+# --- Block 1: System Hardening ---
+echo "Block 1: Hardening System..."
+# CHANGE THESE PASSWORDS to something unique and strong!
+set system login user vyos authentication plaintext-password 'ChangeMeASAP123!'
+set system login user root authentication plaintext-password 'ChangeMeEvenHarder456!'
+
+# Secure SSH: Change port to 2222, disable root, disable password auth (if you use keys)
+set service ssh port '2222'
+set service ssh disable-root-login
+# Uncomment the line below if you add your SSH public key
+# set service ssh disable-password-authentication
+
+# Disable insecure/unneeded services
+delete service snmp
+delete service https
+
+
+# --- Block 2: Control Plane Firewall (Protect the Router) ---
+echo "Block 2: Building Control Plane Firewall..."
+set firewall name MGMT_IN rule 10 action 'accept'
+set firewall name MGMT_IN rule 10 description 'Allow SSH from internal Blue Team networks'
+set firewall name MGMT_IN rule 10 protocol 'tcp'
+set firewall name MGMT_IN rule 10 destination port '2222'
+set firewall name MGMT_IN rule 10 source address '172.20.242.0/24'
+
+set firewall name MGMT_IN rule 11 action 'accept'
+set firewall name MGMT_IN rule 11 description 'Allow SSH from internal Blue Team networks'
+set firewall name MGMT_IN rule 11 protocol 'tcp'
+set firewall name MGMT_IN rule 11 destination port '2222'
+set firewall name MGMT_IN rule 11 source address '172.20.240.0/24'
+
+set firewall name MGMT_IN rule 12 action 'accept'
+set firewall name MGMT_IN rule 12 protocol 'icmp'
+set firewall name MGMT_IN rule 12 description 'Allow ICMP from internal'
+set firewall name MGMT_IN rule 12 source address '172.20.242.0/24'
+set firewall name MGMT_IN rule 13 action 'accept'
+set firewall name MGMT_IN rule 13 protocol 'icmp'
+set firewall name MGMT_IN rule 13 description 'Allow ICMP from internal'
+set firewall name MGMT_IN rule 13 source address '172.20.240.0/24'
+
+
+set firewall name MGMT_IN default-action 'drop'
+
+# Apply the management firewall to the router itself
+set system control-plane firewall in name 'MGMT_IN'
+
+
+# --- Block 3: Static Routing (How to reach internal networks) ---
+echo "Block 3: Setting Static Routes..."
+# Route to network behind Palo Alto
+set protocols static route 172.20.242.0/24 next-hop 172.16.101.254
+
+# Route to network behind Cisco FTD
+set protocols static route 172.20.240.0/24 next-hop 172.16.102.254
+
+
+# --- Block 4: Source NAT (Allow internal nets to reach Internet) ---
+echo "Block 4: Setting Source NAT (Masquerade)..."
+# (eth0 is WAN, eth1 is LAN1, eth2 is LAN2)
+set nat source rule 100 outbound-interface name 'eth0'
+set nat source rule 100 source address '172.20.242.0/24'
+set nat source rule 100 translation address 'masquerade'
+
+set nat source rule 101 outbound-interface name 'eth0'
+set nat source rule 101 source address '172.20.240.0/24'
+set nat source rule 101 translation address 'masquerade'
+
+
+# --- Block 5: Destination NAT (Port Forwarding for Graded Services) ---
+echo "Block 5: Setting Destination NAT (Port Forwarding)..."
+# Assumes WAN interface is eth0 (IP 172.31.21.2)
+
+# Ecom (172.20.242.104)
+set nat destination rule 10 description 'DNAT to Ecom HTTP'
+set nat destination rule 10 inbound-interface name 'eth0'
+set nat destination rule 10 protocol 'tcp'
+set nat destination rule 10 destination port '80'
+set nat destination rule 10 translation address '172.20.242.104'
+
+set nat destination rule 11 description 'DNAT to Ecom HTTPS'
+set nat destination rule 11 inbound-interface name 'eth0'
+set nat destination rule 11 protocol 'tcp'
+set nat destination rule 11 destination port '443'
+set nat destination rule 11 translation address '172.20.242.104'
+
+# Webmail (172.20.242.101) - Mapped to ports 8080/8443
+set nat destination rule 20 description 'DNAT to Webmail HTTP (8080)'
+set nat destination rule 20 inbound-interface name 'eth0'
+set nat destination rule 20 protocol 'tcp'
+set nat destination rule 20 destination port '8080'
+set nat destination rule 20 translation address '172.20.242.101'
+set nat destination rule 20 translation port '80'
+
+set nat destination rule 21 description 'DNAT to Webmail HTTPS (8443)'
+set nat destination rule 21 inbound-interface name 'eth0'
+set nat destination rule 21 protocol 'tcp'
+set nat destination rule 21 destination port '8443'
+set nat destination rule 21 translation address '172.20.242.101'
+set nat destination rule 21 translation port '443'
+
+set nat destination rule 22 description 'DNAT to Webmail SMTP'
+set nat destination rule 22 inbound-interface name 'eth0'
+set nat destination rule 22 protocol 'tcp'
+set nat destination rule 22 destination port '25'
+set nat destination rule 22 translation address '172.20.242.101'
+
+set nat destination rule 23 description 'DNAT to Webmail POP3'
+set nat destination rule 23 inbound-interface name 'eth0'
+set nat destination rule 23 protocol 'tcp'
+set nat destination rule 23 destination port '110'
+set nat destination rule 23 translation address '172.20.242.101'
+
+# Splunk (172.20.242.20)
+set nat destination rule 30 description 'DNAT to Splunk Web'
+set nat destination rule 30 inbound-interface name 'eth0'
+set nat destination rule 30 protocol 'tcp'
+set nat destination rule 30 destination port '8000'
+set nat destination rule 30 translation address '172.20.242.20'
+
+# AD/DNS (172.20.240.102)
+set nat destination rule 40 description 'DNAT to DNS (TCP)'
+set nat destination rule 40 inbound-interface name 'eth0'
+set nat destination rule 40 protocol 'tcp'
+set nat destination rule 40 destination port '53'
+set nat destination rule 40 translation address '172.20.240.102'
+
+set nat destination rule 41 description 'DNAT to DNS (UDP)'
+set nat destination rule 41 inbound-interface name 'eth0'
+set nat destination rule 41 protocol 'udp'
+set nat destination rule 41 destination port '53'
+set nat destination rule 41 translation address '172.20.240.102'
+
+# Server 2019 Web (172.20.240.101) - Mapped to ports 9080/9443
+set nat destination rule 50 description 'DNAT to Srv2019 Web HTTP (9080)'
+set nat destination rule 50 inbound-interface name 'eth0'
+set nat destination rule 50 protocol 'tcp'
+set nat destination rule 50 destination port '9080'
+set nat destination rule 50 translation address '172.20.240.101'
+set nat destination rule 50 translation port '80'
+
+set nat destination rule 51 description 'DNAT to Srv2019 Web HTTPS (9443)'
+set nat destination rule 51 inbound-interface name 'eth0'
+set nat destination rule 51 protocol 'tcp'
+set nat destination rule 51 destination port '9443'
+set nat destination rule 51 translation address '172.20.240.101'
+set nat destination rule 51 translation port '443'
+
+# Server 2022 FTP (172.20.240.104)
+set nat destination rule 60 description 'DNAT to FTP'
+set nat destination rule 60 inbound-interface name 'eth0'
+set nat destination rule 60 protocol 'tcp'
+set nat destination rule 60 destination port '21'
+set nat destination rule 60 translation address '172.20.240.104'
+
+
+# --- Block 7: WAN Firewall (Allow Graded Services) ---
+echo "Block 7: Building WAN Firewall..."
+# NAT (Block 5) happens *before* this firewall.
+# So, we must allow traffic to the *internal* (translated) IPs.
+
+set firewall name WAN_IN rule 1 action 'accept'
+set firewall name WAN_IN rule 1 description 'Allow Established/Related'
+set firewall name WAN_IN rule 1 state 'established'
+set firewall name WAN_IN rule 1 state 'related'
+
+# Ecom Rules
+set firewall name WAN_IN rule 10 action 'accept'
+set firewall name WAN_IN rule 10 description 'Allow Ecom HTTP'
+set firewall name WAN_IN rule 10 protocol 'tcp'
+set firewall name WAN_IN rule 10 destination address '172.20.242.104'
+set firewall name WAN_IN rule 10 destination port '80,443'
+
+# Webmail Rules
+set firewall name WAN_IN rule 20 action 'accept'
+set firewall name WAN_IN rule 20 description 'Allow Webmail Web'
+set firewall name WAN_IN rule 20 protocol 'tcp'
+set firewall name WAN_IN rule 20 destination address '172.20.242.101'
+set firewall name WAN_IN rule 20 destination port '80,443' # Internal ports
+
+set firewall name WAN_IN rule 22 action 'accept'
+set firewall name WAN_IN rule 22 description 'Allow Webmail SMTP'
+set firewall name WAN_IN rule 22 protocol 'tcp'
+set firewall name WAN_IN rule 22 destination address '172.20.242.101'
+set firewall name WAN_IN rule 22 destination port '25'
+
+set firewall name WAN_IN rule 23 action 'accept'
+set firewall name WAN_IN rule 23 description 'Allow Webmail POP3'
+set firewall name WAN_IN rule 23 protocol 'tcp'
+set firewall name WAN_IN rule 23 destination address '172.20.242.101'
+set firewall name WAN_IN rule 23 destination port '110'
+
+# Splunk Rule
+set firewall name WAN_IN rule 30 action 'accept'
+set firewall name WAN_IN rule 30 description 'Allow Splunk Web'
+set firewall name WAN_IN rule 30 protocol 'tcp'
+set firewall name WAN_IN rule 30 destination address '172.20.242.20'
+set firewall name WAN_IN rule 30 destination port '8000'
+
+# DNS Rules
+set firewall name WAN_IN rule 40 action 'accept'
+set firewall name WAN_IN rule 40 description 'Allow DNS'
+set firewall name WAN_IN rule 40 protocol 'tcp,udp'
+set firewall name WAN_IN rule 40 destination address '172.20.240.102'
+set firewall name WAN_IN rule 40 destination port '53'
+
+# Srv2019 Web Rules
+set firewall name WAN_IN rule 50 action 'accept'
+set firewall name WAN_IN rule 50 description 'Allow Srv2019 Web'
+set firewall name WAN_IN rule 50 protocol 'tcp'
+set firewall name WAN_IN rule 50 destination address '172.20.240.101'
+set firewall name WAN_IN rule 50 destination port '80,443' # Internal ports
+
+# FTP Rule
+set firewall name WAN_IN rule 60 action 'accept'
+set firewall name WAN_IN rule 60 description 'Allow FTP'
+set firewall name WAN_IN rule 60 protocol 'tcp'
+set firewall name WAN_IN rule 60 destination address '172.20.240.104'
+set firewall name WAN_IN rule 60 destination port '21'
+
+# Default Drop
+set firewall name WAN_IN default-action 'drop'
+set firewall name WAN_IN rule 999 description 'Log and Drop All Other Traffic'
+set firewall name WAN_IN rule 999 action 'drop'
+set firewall name WAN_IN rule 999 log 'enable'
+set firewall name WAN_IN rule 999 protocol 'all'
+
+
+# Apply WAN Firewall to WAN Interface (eth0)
+set interfaces ethernet eth0 firewall in name 'WAN_IN'
+
+
+# --- Block 8: Connection Tracking ---
+echo "Block 8: Enabling Connection Tracking Modules..."
+# Needed for FTP to work properly through NAT
+set system conntrack modules ftp
+
+
+# --- Finalize ---
+echo "Committing configuration..."
+commit
+
+echo "Saving configuration..."
+save
+
+echo "Configuration applied and saved. Exiting."
+exit
