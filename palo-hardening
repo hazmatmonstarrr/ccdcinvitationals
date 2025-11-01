@@ -1,0 +1,83 @@
+# === CCDC PALO ALTO HARDENING SCRIPT (PASTE IN 'configure' MODE) ===
+#
+# --- !!! STOP! YOU MUST EDIT THESE 4 PLACEHOLDERS !!! ---
+#
+# <BLUE_TEAM_CIDR> = Your team's management subnet. e.g., 10.10.10.0/24
+# <WAN_INTERFACE>    = Your external/untrust interface. e.g., ethernet1/1
+# <LAN_INTERFACE>    = Your internal/trust interface. e.g., ethernet1/2
+# <SERVER_IP>        = The IP of your internal scored server. e.g., 192.168.1.50
+#
+# --- !!! STOP! YOU MUST EDIT THESE 4 PLACEHOLDERS !!! ---
+
+# === 1. User & Management Hardening ===
+
+# --- STEP 1: CREATE YOUR NEW ADMIN (DO THIS MANUALLY FIRST) ---
+#
+# Type this command and follow the prompts for a new password:
+# set mconfig users hazmat password
+#
+# --- AFTER YOU'VE SET THE PASSWORD, PASTE THE REST OF THE SCRIPT ---
+
+# Make your 'hazmat' user a superuser
+set mconfig users hazmat permissions role-based superuser yes
+
+# Create a password profile for account lockout
+set mconfig password-profile ccdc-lockout-profile login-tries 3 lockout-time 15
+set mconfig users hazmat password-profile ccdc-lockout-profile
+set mconfig users admin password-profile ccdc-lockout-profile
+
+# Secure the management GUI with strong TLS
+set deviceconfig system ssl-tls-service-profile CCDC-MGT-SSL protocol-settings min-version tls1-2
+set deviceconfig system service ssl-tls-service-profile CCDC-MGT-SSL
+
+# Whitelist your Blue Team's IP range for management access
+set deviceconfig system permitted-ip <BLUE_TEAM_CIDR>
+
+# === 2. Lock Down the Management Plane ===
+
+# Create an Interface Management Profile to BLOCK management on data ports
+set network profiles interface-mgmt-profile CCDC-DATA-PLANE-LOCKDOWN ping no ssh no https no http no
+set network profiles interface-mgmt-profile CCDC-DATA-PLANE-LOCKDOWN snmp no
+
+# Apply the lockdown profile to your WAN and LAN interfaces
+set network interface ethernet <WAN_INTERFACE> layer3 interface-management-profile CCDC-DATA-PLANE-LOCKDOWN
+set network interface ethernet <LAN_INTERFACE> layer3 interface-management-profile CCDC-DATA-PLANE-LOCKDOWN
+
+# === 3. Create Objects for Scored Services ===
+
+# Create an address object for your internal server
+set object address SCORED-SERVER-IP ip-netmask <SERVER_IP>/32
+
+# Create an Application Group for your scored services
+# This uses App-ID, which is much stronger than just ports.
+set object application-group SCORED-APPS members [ dns ftp pop3 smtp ssl web-browsing ]
+
+# === 4. Build CCDC Security Policies (Default-Deny) ===
+
+# --- Rule 1: Allow Scored Services INBOUND (from untrust to trust) ---
+set rulebase security rules "Allow-Scored-Services" from untrust to trust source any destination SCORED-SERVER-IP application SCORED-APPS service application-default action allow log-end yes
+
+# --- Rule 2: Allow LAN Outbound (for updates, DNS lookups, etc.) ---
+# This allows your internal clients to reach the internet for essential services.
+set rulebase security rules "Allow-LAN-Outbound" from trust to untrust source any destination any application [ ssl web-browsing dns ] service application-default action allow log-end yes
+
+# --- Rule 3: Explicit Deny-All (The CCDC safety net) ---
+# This rule should be last. It denies and LOGS all other traffic.
+set rulebase security rules "Explicit-Deny-All" from any to any source any destination any application any service any action deny log-end yes
+
+# --- 5. Set Rule Order ---
+# This is critical. Rules are read top-to-bottom.
+move rulebase security rules "Allow-Scored-Services" top
+move rulebase security rules "Allow-LAN-Outbound" after "Allow-Scored-Services"
+move rulebase security rules "Explicit-Deny-All" bottom
+
+# --- 6. Set Logging for Denied Traffic ---
+# This makes sure your default "deny" policies are logging, so you can see Red Team scans.
+set rulebase default-security-rules intrazone-default log-end yes
+set rulebase default-security-rules interzone-default log-end yes
+
+# --- 7. Commit the Changes ---
+#
+# --- !!! SCRIPT IS DONE. MANUALLY RUN 'commit' NOW !!! ---
+#
+# commit
