@@ -15,11 +15,6 @@
 source /opt/vyatta/etc/functions/script-template
 configure
 
-# === 1. User & Management Hardening ===
-# --- !!! CHANGE THIS PASSWORD NOW !!! ---
-set system login user hazmat authentication plaintext-password 'CCDC-ChangeMeNow!'
-set system login user hazmat level admin
-set system login user vyos disable
 
 # Change SSH port and deny root
 set service ssh port '4971'
