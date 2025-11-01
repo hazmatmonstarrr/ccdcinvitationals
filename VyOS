@@ -25,8 +25,8 @@ echo "Block 1: Hardening System..."
 set system login user T3am12 authentication plaintext-password 'ChangeMeASAP123!'
 set system login user T3am12 authentication plaintext-password 'ChangeMeEvenHarder456!'
 
-# Secure SSH: Change port to 2222, disable root, disable password auth (if you use keys)
-set service ssh port '2222'
+# Secure SSH: Change port to 4971, disable root, disable password auth (if you use keys)
+set service ssh port '4971'
 set service ssh disable-root-login
 # Uncomment the line below if you add your SSH public key
 # set service ssh disable-password-authentication
